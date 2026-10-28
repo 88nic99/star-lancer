@@ -18,8 +18,9 @@
    STAR LANCER  -  an original side-scrolling shooter for Second Life
    media-on-a-prim.  Click the screen once to give it keyboard focus.
 
-   P1: Arrows move | Z or SPACE fire (hold = charge beam) | X pod
-   P2: WASD   move | F fire (hold = charge beam)          | G pod
+   1 PLAYER:  Arrows OR WASD move | SPACE / Z / F fire (hold = charge beam) | X / C / G pod
+   2 PLAYERS: P1 Arrows move | Z or SPACE fire | X pod
+              P2 WASD   move | F fire          | G pod
    1 / 2 start 1-player / 2-player     M mute
    ===================================================================== */
 const W = 480, H = 270;
@@ -86,14 +87,44 @@ const sfx = {
 /* ------------------------------ input ------------------------------ */
 const keys = {}, pressed = {};
 const BLOCK = ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','Tab'];
-addEventListener('keydown', e => {
+/* Second Life's built-in browser does not always fill in e.code,
+   so fall back to e.key and the old numeric keyCode. */
+const KC = { 37:'ArrowLeft', 38:'ArrowUp', 39:'ArrowRight', 40:'ArrowDown', 32:'Space', 13:'Enter', 9:'Tab',
+             49:'Digit1', 50:'Digit2', 97:'Numpad1', 98:'Numpad2',
+             65:'KeyA', 68:'KeyD', 83:'KeyS', 87:'KeyW', 90:'KeyZ', 88:'KeyX', 67:'KeyC', 70:'KeyF', 71:'KeyG', 77:'KeyM' };
+function keyId(e) {
+  if (e.code && e.code !== 'Unidentified') return e.code;
+  const k = e.key;
+  if (k) {
+    if (k === ' ' || k === 'Spacebar') return 'Space';
+    if (k.length === 1) {
+      const u = k.toUpperCase();
+      if (u >= 'A' && u <= 'Z') return 'Key' + u;
+      if (u >= '0' && u <= '9') return 'Digit' + u;
+    }
+    if (k === 'Left') return 'ArrowLeft';
+    if (k === 'Right') return 'ArrowRight';
+    if (k === 'Up') return 'ArrowUp';
+    if (k === 'Down') return 'ArrowDown';
+    if (k.indexOf('Arrow') === 0 || k === 'Enter' || k === 'Tab') return k;
+  }
+  return KC[e.keyCode || e.which] || '';
+}
+function onKeyDown(e) {
+  const id = keyId(e); if (!id) return;
   initAudio();
-  if (!keys[e.code]) pressed[e.code] = true;
-  keys[e.code] = true;
-  if (BLOCK.indexOf(e.code) >= 0) e.preventDefault();
-  if (e.code === 'KeyM') muted = !muted;
-});
-addEventListener('keyup', e => { keys[e.code] = false; });
+  if (!keys[id]) pressed[id] = true;
+  keys[id] = true;
+  if (BLOCK.indexOf(id) >= 0) e.preventDefault();
+  if (id === 'KeyM' && !e.repeat) muted = !muted;
+}
+function onKeyUp(e) {
+  const id = keyId(e); if (!id) return;
+  keys[id] = false;
+  if (BLOCK.indexOf(id) >= 0) e.preventDefault();
+}
+addEventListener('keydown', onKeyDown);
+addEventListener('keyup', onKeyUp);
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 function focusGame() { initAudio(); try { window.focus(); cv.focus(); } catch (e) {} }
 cv.addEventListener('mousedown', () => {
@@ -101,12 +132,19 @@ cv.addEventListener('mousedown', () => {
   if (mode === 'title') startGame(1);
   else if (mode === 'over' && overT <= 0) mode = 'title';
 });
+cv.addEventListener('click', focusGame);
 const down = l => l.some(k => keys[k]);
 const hit = l => l.some(k => pressed[k]);
 const CTRL = [
   { up: ['ArrowUp'], dn: ['ArrowDown'], lf: ['ArrowLeft'], rt: ['ArrowRight'], fire: ['KeyZ', 'Space'], pod: ['KeyX', 'KeyC'] },
   { up: ['KeyW'], dn: ['KeyS'], lf: ['KeyA'], rt: ['KeyD'], fire: ['KeyF'], pod: ['KeyG'] }
 ];
+/* In a 1-player game, player 1 can use arrows OR WASD, and Space/Z/F to fire. */
+const CTRL_SOLO = {
+  up: ['ArrowUp', 'KeyW'], dn: ['ArrowDown', 'KeyS'], lf: ['ArrowLeft', 'KeyA'], rt: ['ArrowRight', 'KeyD'],
+  fire: ['KeyZ', 'Space', 'KeyF'], pod: ['KeyX', 'KeyC', 'KeyG']
+};
+function ctrlFor(p) { return (players.length === 1 && p.id === 0) ? CTRL_SOLO : CTRL[p.id]; }
 
 /* ------------------------------ state ------------------------------ */
 let mode = 'title', players = [], stage = 0, stageTime = 0, spawnT = 2, waveN = 0;
@@ -372,7 +410,7 @@ function killPlayer(p) {
   if (p.lives <= 0) p.out = true; else p.respawn = 1.6;
 }
 function updatePlayer(p, dt) {
-  const c = CTRL[p.id];
+  const c = ctrlFor(p);
   if (!p.alive) {
     if (!p.out && (p.respawn -= dt) <= 0) {
       p.alive = true; p.x = 40; const s = segAt(40); p.y = (s.t + H - s.b) / 2; p.inv = 2.5;
@@ -704,8 +742,8 @@ function draw() {
     if (Math.floor(titleT * 2) % 2) g.fillText('PRESS 1 OR CLICK = 1 PLAYER     2 = 2 PLAYERS', W / 2, 125);
     g.fillStyle = '#ffd24a'; g.fillText('HI ' + pad(hi), W / 2, 108);
     g.fillStyle = '#9ab'; g.font = '9px monospace';
-    g.fillText('P1  ARROWS move   Z/SPACE fire (hold = BEAM)   X pod', W / 2, 150);
-    g.fillText('P2  WASD  move    F fire (hold = BEAM)         G pod', W / 2, 162);
+    g.fillText('1 PLAYER:  ARROWS or WASD move   SPACE fire (hold = BEAM)   X pod', W / 2, 146);
+    g.fillText('2 PLAYERS: P1 ARROWS + Z/SPACE + X    P2 WASD + F + G', W / 2, 160);
     g.fillText('M = mute   -  click the screen first to focus keys', W / 2, 178);
   }
   if (mode === 'over') {
